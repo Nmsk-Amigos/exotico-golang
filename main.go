@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"os"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
 )
 
 func goDotEnvVariable(key string) string {
@@ -25,41 +25,69 @@ func goDotEnvVariable(key string) string {
 	return os.Getenv(key)
 }
 
+func TelegramBot() {
+
+	bot, err := tgbotapi.NewBotAPI(goDotEnvVariable("TELEGRAM_TOKEN"))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	bot.Debug = true
+
+	log.Printf("Authorized on account %s", bot.Self.UserName)
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates := bot.GetUpdatesChan(u)
+
+	for update := range updates {
+		if update.Message != nil { // If we got a message
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
+			msg.ReplyToMessageID = update.Message.MessageID
+			DiscordSend(update.Message.From.UserName, update.Message.Text)
+			bot.Send(msg)
+		}
+	}
+}
+
 func main() {
 	// Echo instance
 	e := echo.New()
 	//e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	//e.Use(middleware.Recover())
 	// Routes
-	e.GET("/discord", discord)
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Exotico")
 	})
 	// Start server
+	go TelegramBot()
 	log.Println("http://localhost:8080")
+
 	e.Logger.Fatal(e.Start(":8080"))
 }
 
 // Handler
-func discord(c echo.Context) error {
+func DiscordSend(username, text string) {
 	var jsonData = []byte(`{
-		"username": "Agogo",
-		"avatar_url": "https://images-ext-2.discordapp.net/external/od190cVs9THpP2sqpSZMiV-lQK5XuzN47uSGvsgkEfI/%3Fsize%3D4096%26ignore%3Dtrue/https/cdn.discordapp.com/avatars/665223957082931210/a6bcf1655eccbc2c7b43d75851abf725.png",
-		"content":"exotico"
+		"username": "` + username + `",
+		"avatar_url": "https://media.discordapp.net/attachments/1049891409878069248/1049914341589270538/2048px-Telegram_logo.png",
+		"content": "` + text + `"
+
 	}`)
-	req, err := http.NewRequest("POST", goDotEnvVariable("URL"), bytes.NewBuffer(jsonData))
+	fmt.Println(bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", goDotEnvVariable("DISCORD_WEBHOOK"), bytes.NewBuffer(jsonData))
 	req.Header.Add("Content-Type", "application/json")
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "Error mi fafa")
+		fmt.Println(err)
 	}
 
 	client := &http.Client{}
 	response, error := client.Do(req)
 	if error != nil {
-		return c.String(http.StatusInternalServerError, "Error mí fafa")
+		fmt.Println(err)
 	}
 	defer response.Body.Close()
 	body, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(string(body))
-	return c.String(http.StatusOK, "Lo mando mí fafa")
 }
